@@ -1,0 +1,12 @@
+FROM confluentinc/cp-zookeeper:7.2.1
+
+USER root
+
+# Копируем entrypoint скрипт
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Устанавливаем entrypoint
+ENTRYPOINT ["/entrypoint.sh"]
+
+USER 1000
