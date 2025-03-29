@@ -13,19 +13,18 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
-        logging.FileHandler("consumer.log"),  # Логи в файл
-        logging.StreamHandler()  # Логи в консоль
+        logging.FileHandler("consumer.log"),
+        logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
 
 # Настройки Kafka
 BOOTSTRAP_SERVERS = 'kafka:9093'
-TOPIC = 'test-topic'
+TOPIC = 'alerts'  # Топик, куда consumer-1 отправляет результаты
 GROUP_ID = 'webapp-group'
 
 # Глобальные флаги и данные
-producer_running = False
 consumer_messages = []
 consumer_lock = threading.Lock()
 
@@ -34,11 +33,14 @@ def wait_for_kafka():
     max_attempts = 30
     for attempt in range(max_attempts):
         try:
-            producer = KafkaProducer(
+            consumer = KafkaConsumer(
+                TOPIC,
                 bootstrap_servers=BOOTSTRAP_SERVERS,
-                value_serializer=lambda v: json.dumps(v).encode('utf-8')
+                group_id=GROUP_ID,
+                auto_offset_reset='latest',
+                value_deserializer=lambda x: json.loads(x.decode('utf-8'))
             )
-            producer.close()
+            consumer.close()
             logger.info("Successfully connected to Kafka")
             return True
         except Exception as e:
@@ -46,35 +48,6 @@ def wait_for_kafka():
             time.sleep(2)
     logger.error("Failed to connect to Kafka after maximum attempts")
     return False
-
-# Создаём продюсера
-def create_producer():
-    try:
-        return KafkaProducer(
-            bootstrap_servers=BOOTSTRAP_SERVERS,
-            value_serializer=lambda v: json.dumps(v).encode('utf-8')
-        )
-    except Exception as e:
-        logger.error(f"Error creating producer: {e}")
-        raise
-
-# Функция для генерации тестовых транзакций
-def produce_transactions():
-    global producer_running
-    producer = create_producer()
-    i = 0
-    while producer_running:
-        transaction = {
-            'transaction_id': i,
-            'user_id': f'user_{i % 3}',
-            'amount': round(i * 10.5, 2),
-            'timestamp': int(time.time())
-        }
-        producer.send(TOPIC, transaction)
-        logger.info(f"Sent transaction: {transaction}")
-        i += 1
-        time.sleep(1)
-    producer.close()
 
 # Создаём потребителя
 def create_consumer():
@@ -90,73 +63,19 @@ def create_consumer():
         logger.error(f"Error creating consumer: {e}")
         raise
 
-# Простая "модель" для обработки транзакций
-def predict_suspicious(transaction):
-    amount = transaction['amount']
-    is_suspicious = amount > 100
-    return "Suspicious" if is_suspicious else "Normal"
-
 # Функция для потребителя
 def consume_transactions():
     consumer = create_consumer()
     for message in consumer:
-        transaction = message.value
-        status = predict_suspicious(transaction)
-        result = {
-            'transaction_id': transaction['transaction_id'],
-            'user_id': transaction['user_id'],
-            'amount': transaction['amount'],
-            'status': status,
-            'timestamp': transaction['timestamp']
-        }
+        result = message.value
         with consumer_lock:
             consumer_messages.append(result)
-        logger.info(f"Processed transaction: {result}")
+        logger.info(f"Processed alert: {result}")
 
 # Главная страница
 @app.route('/')
 def index():
     return render_template('index.html')
-
-# Эндпоинт для отправки транзакции через форму
-@app.route('/send_transaction', methods=['POST'])
-def send_transaction():
-    try:
-        transaction_id = int(request.form['transaction_id'])
-        user_id = request.form['user_id']
-        amount = float(request.form['amount'])
-        
-        transaction = {
-            'transaction_id': transaction_id,
-            'user_id': user_id,
-            'amount': amount,
-            'timestamp': int(time.time())
-        }
-        
-        producer = create_producer()
-        producer.send(TOPIC, transaction)
-        producer.flush()
-        producer.close()
-        
-        logger.info(f"Transaction sent via form: {transaction}")
-        return {'status': 'success', 'message': 'Transaction sent successfully!'}
-    except Exception as e:
-        logger.error(f"Error sending transaction: {e}")
-        return {'status': 'error', 'message': str(e)}, 500
-
-# Эндпоинт для управления продюсером
-@app.route('/toggle_producer', methods=['POST'])
-def toggle_producer():
-    global producer_running
-    if not producer_running:
-        producer_running = True
-        threading.Thread(target=produce_transactions, daemon=True).start()
-        logger.info("Producer started")
-        return {'status': 'success', 'message': 'Producer started'}
-    else:
-        producer_running = False
-        logger.info("Producer stopped")
-        return {'status': 'success', 'message': 'Producer stopped'}
 
 # Эндпоинт для получения сообщений в реальном времени через SSE
 @app.route('/stream')

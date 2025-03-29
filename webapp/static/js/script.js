@@ -1,63 +1,30 @@
 document.addEventListener('DOMContentLoaded', () => {
-    let allTransactions = [];
+    let allAlerts = [];
 
-    // Обработка формы отправки транзакции
-    const form = document.getElementById('transaction-form');
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const formData = new FormData(form);
-        try {
-            const response = await fetch('/send_transaction', {
-                method: 'POST',
-                body: formData
-            });
-            const result = await response.json();
-            if (result.status === 'success') {
-                alert(result.message);
-                form.reset();
-            } else {
-                alert(`Error: ${result.message}`);
-            }
-        } catch (error) {
-            alert(`Error: ${error.message}`);
-        }
-    });
-
-    // Обработка кнопки управления продюсером
-    const toggleButton = document.getElementById('toggle-producer');
-    toggleButton.addEventListener('click', async () => {
-        try {
-            const response = await fetch('/toggle_producer', {
-                method: 'POST'
-            });
-            const result = await response.json();
-            toggleButton.textContent = result.message === 'Producer started' ? 'Stop Producer' : 'Start Producer';
-            toggleButton.classList.toggle('btn-success', result.message === 'Producer started');
-            toggleButton.classList.toggle('btn-danger', result.message === 'Producer stopped');
-        } catch (error) {
-            alert(`Error: ${error.message}`);
-        }
-    });
-
-    // Функция для отображения транзакций с учётом фильтра
+    // Функция для отображения логов с учётом фильтра
     const tableBody = document.getElementById('transactions-table');
     const filterSelect = document.getElementById('filter-status');
-    const renderTransactions = () => {
+    const renderAlerts = () => {
         const filter = filterSelect.value;
         tableBody.innerHTML = '';
-        allTransactions.forEach(transaction => {
+        allAlerts.forEach(alert => {
+            const attackStatus = alert.attack_status.toLowerCase();
             if (filter === 'all' ||
-                (filter === 'normal' && transaction.status === 'Normal') ||
-                (filter === 'attack' && transaction.status === 'Attack')) {
+                (filter === 'normal' && attackStatus === 'normal') ||
+                (filter === 'attack' && attackStatus === 'attack')) {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>${transaction.transaction_id}</td>
-                    <td>${transaction.user_id}</td>
-                    <td>${transaction.amount}</td>
-                    <td>${new Date(transaction.timestamp * 1000).toLocaleString()}</td>
-                    <td class="${transaction.status.toLowerCase()}">
-                        ${transaction.status}
+                    <td>${new Date(alert.timestamp * 1000).toLocaleString()}</td>
+                    <td class="${attackStatus}">
+                        ${alert.attack_status}
                     </td>
+                    <td>${alert.rf_prediction}</td>
+                    <td>${alert.dt_prediction}</td>
+                    <td>${alert.src_ip}</td>
+                    <td>${alert.dst_ip}</td>
+                    <td>${alert.src_port}</td>
+                    <td>${alert.dst_port}</td>
+                    <td>${alert.protocol}</td>
                 `;
                 tableBody.prepend(row);
             }
@@ -65,21 +32,21 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Обработка фильтра
-    filterSelect.addEventListener('change', renderTransactions);
+    filterSelect.addEventListener('change', renderAlerts);
 
     // Обработка кнопки очистки таблицы
     const clearButton = document.getElementById('clear-table');
     clearButton.addEventListener('click', () => {
-        allTransactions = [];
-        renderTransactions();
+        allAlerts = [];
+        renderAlerts();
     });
 
-    // Подключение к SSE для получения транзакций в реальном времени
+    // Подключение к SSE для получения логов в реальном времени
     const source = new EventSource('/stream');
     source.onmessage = (event) => {
-        const transaction = JSON.parse(event.data);
-        allTransactions.unshift(transaction);
-        renderTransactions();
+        const alert = JSON.parse(event.data);
+        allAlerts.unshift(alert);
+        renderAlerts();
     };
 
     source.onerror = (error) => {
