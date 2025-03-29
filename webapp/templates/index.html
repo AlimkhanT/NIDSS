@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kafka Transaction Monitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center mb-4">Kafka Transaction Monitor</h1>
+
+        <!-- Форма для отправки транзакции -->
+        <div class="card mb-4">
+            <div class="card-header">Send Transaction</div>
+            <div class="card-body">
+                <form id="transaction-form">
+                    <div class="mb-3">
+                        <label for="transaction_id" class="form-label">Transaction ID</label>
+                        <input type="number" class="form-control" id="transaction_id" name="transaction_id" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="user_id" class="form-label">User ID</label>
+                        <input type="text" class="form-control" id="user_id" name="user_id" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="amount" class="form-label">Amount</label>
+                        <input type="number" step="0.01" class="form-control" id="amount" name="amount" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Send Transaction</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Кнопка для управления продюсером -->
+        <div class="mb-4 text-center">
+            <button id="toggle-producer" class="btn btn-success">Start Producer</button>
+        </div>
+
+        <!-- Таблица для отображения транзакций -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Consumer Logs (Real-Time)</span>
+                <div>
+                    <select id="filter-status" class="form-select form-select-sm d-inline-block" style="width: auto;">
+                        <option value="all">All Transactions</option>
+                        <option value="normal">Normal Only</option>
+                        <option value="attack">Attacks Only</option>
+                    </select>
+                    <button id="clear-table" class="btn btn-sm btn-secondary">Clear Table</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Transaction ID</th>
+                            <th>User ID</th>
+                            <th>Amount</th>
+                            <th>Timestamp</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactions-table">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/script.js"></script>
+</body>
+</html>

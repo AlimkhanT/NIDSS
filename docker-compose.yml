@@ -49,7 +49,6 @@ services:
       - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
     volumes:
       - kafka-data:/var/lib/kafka/data
-
     healthcheck:
       test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:9092"]
       interval: 10s
@@ -95,14 +94,10 @@ services:
       - ./models:/app/models
     networks:
       - ids-network
-    #restart: "unless-stopped"
     deploy:
       resources:
         limits:
           memory: 4g
-
-  # ---- ВАЖНО ----
-  # Ниже перемещаем ваши сервисы produce-transactions и producer в блок "services", а не в "networks".
 
   produce-transactions:
     image: ids-produce-transactions
@@ -116,9 +111,9 @@ services:
       - NET_ADMIN
       - NET_RAW
     environment:
-      - NETWORK_INTERFACE=eth0       # или нужный вам интерфейс
+      - NETWORK_INTERFACE=eth0
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    network_mode: host               # если необходим сырой доступ к интерфейсу
+    network_mode: host
     restart: "unless-stopped"
 
   producer:
@@ -136,6 +131,20 @@ services:
       - NETWORK_INTERFACE=eth0
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     network_mode: host
+    restart: "unless-stopped"
+
+  webapp:
+    image: ids-webapp
+    build:
+      context: ./webapp
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - ids-network
     restart: "unless-stopped"
 
 volumes:
