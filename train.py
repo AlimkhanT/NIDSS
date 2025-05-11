@@ -100,7 +100,7 @@ def train_and_save_model():
         return
 
     logger.info("Загрузка NSL-KDD датасета...")
-    TRAIN_FILE = "nsl-kdd/KDDTrain+.txt"
+    TRAIN_FILE = r"C:\Users\stakh\Downloads\NIDS\NIDSS\nsl-kdd\KDDTrain+.txt"
     df = pd.read_csv(TRAIN_FILE, names=FEATURES + ['label', 'difficulty'], sep=",", header=None)
 
     df.columns = df.columns.str.strip().astype(str)
@@ -113,12 +113,13 @@ def train_and_save_model():
     df["label"] = df["label"].str.strip(".").apply(lambda x: 0 if x == "normal" else 1)
     logger.info(f"Уникальные значения label после обработки: {df['label'].unique()}")
 
+
     processed_df = preprocess(df, is_train=True, keep_label=True)
     
     X = processed_df.drop(columns=["label"])
     y = processed_df["label"]
 
-    logger.info(f"Количество признаков после предобработки: {X.shape[1]}")
+    logger.info("Количество признаков после предобработки: {X.shape[1]}")
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 

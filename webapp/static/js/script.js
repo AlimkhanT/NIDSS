@@ -1,88 +1,143 @@
 document.addEventListener('DOMContentLoaded', () => {
     let allAlerts = [];
-    let normalCounter = 0; // Счётчик для нормальных логов
+    let displayedAlerts = [];
+    const alertsPerPage = 50;
+    let currentPage = 1;
+    let isStreaming = true;
+    let eventSource = new EventSource('/stream');
 
-    // Функция для отображения логов с учётом фильтра
     const tableBody = document.getElementById('transactions-table');
     const filterSelect = document.getElementById('filter-status');
+    const loadMoreButton = document.getElementById('load-more');
+    const toggleStreamButton = document.getElementById('toggle-stream');
+
     const renderAlerts = () => {
-        const filter = filterSelect.value;
-        tableBody.innerHTML = '';
-        normalCounter = 0; // Сбрасываем счётчик при каждом рендере
+        console.log('Rendering alerts:', allAlerts);
+        allAlerts.sort((a, b) => {
+            const aIsAttack = a.attack_status.toLowerCase().includes('attack');
+            const bIsAttack = b.attack_status.toLowerCase().includes('attack');
+            if (aIsAttack && !bIsAttack) return -1;
+            if (!aIsAttack && bIsAttack) return 1;
+            return b.timestamp - a.timestamp;
+        });
 
+        displayedAlerts = [];
+        let normalCount = 0;
         allAlerts.forEach(alert => {
-            const attackStatus = alert.attack_status.toLowerCase();
-            let shouldDisplay = false;
-
-            if (attackStatus === 'attack') {
-                // Все атаки отображаются всегда
-                shouldDisplay = true;
-            } else if (attackStatus === 'normal') {
-                // Для нормальных логов увеличиваем счётчик
-                normalCounter++;
-                // Отображаем только каждый десятый нормальный лог
-                if (normalCounter % 10 === 0) {
-                    shouldDisplay = true;
-                }
-            }
-
-            // Применяем фильтр
-            if (filter === 'all' && shouldDisplay) {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${new Date(alert.timestamp * 1000).toLocaleString()}</td>
-                    <td class="${attackStatus}">
-                        ${alert.attack_status}
-                    </td>
-                    <td>${alert.rf_prediction}</td>
-                    <td>${alert.dt_prediction}</td>
-                    <td>${alert.src_ip}</td>
-                    <td>${alert.dst_ip}</td>
-                    <td>${alert.src_port}</td>
-                    <td>${alert.dst_port}</td>
-                    <td>${alert.protocol}</td>
-                `;
-                tableBody.prepend(row); // Добавляем строку сверху
-            } else if (filter === 'attack' && attackStatus === 'attack') {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${new Date(alert.timestamp * 1000).toLocaleString()}</td>
-                    <td class="${attackStatus}">
-                        ${alert.attack_status}
-                    </td>
-                    <td>${alert.rf_prediction}</td>
-                    <td>${alert.dt_prediction}</td>
-                    <td>${alert.src_ip}</td>
-                    <td>${alert.dst_ip}</td>
-                    <td>${alert.src_port}</td>
-                    <td>${alert.dst_port}</td>
-                    <td>${alert.protocol}</td>
-                `;
-                tableBody.prepend(row); // Добавляем строку сверху
+            const attackStatus = alert.attack_status.toLowerCase().includes('attack') ? 'attack' : 'normal';
+            if (attackStatus === 'attack' || (filterSelect.value === 'all' && normalCount < 10)) {
+                displayedAlerts.push(alert);
+                if (attackStatus === 'normal') normalCount++;
             }
         });
+
+        const start = (currentPage - 1) * alertsPerPage;
+        const end = start + alertsPerPage;
+        const paginatedAlerts = displayedAlerts.slice(0, end);
+
+        tableBody.innerHTML = '';
+        paginatedAlerts.forEach(alert => {
+            const attackStatus = alert.attack_status.toLowerCase().includes('attack') ? 'attack' : 'normal';
+            const row = document.createElement('tr');
+            row.className = `alert-row ${attackStatus}`;
+            row.innerHTML = `
+                <td>${new Date(alert.timestamp * 1000).toLocaleString()}</td>
+                <td class="${attackStatus}">
+                    <i class="fas ${attackStatus === 'attack' ? 'fa-exclamation-triangle status-icon text-danger' : 'fa-check-circle status-icon text-success'}"></i>
+                    ${alert.attack_status}
+                </td>
+                <td>${alert.rf_prediction}</td>
+                <td>${alert.dt_prediction}</td>
+                <td>${alert.src_ip}</td>
+                <td>${alert.dst_ip}</td>
+                <td>${alert.src_port}</td>
+                <td>${alert.dst_port}</td>
+                <td>${alert.protocol}</td>
+            `;
+            tableBody.appendChild(row);
+        });
+
+        loadMoreButton.style.display = end < displayedAlerts.length ? 'block' : 'none';
     };
 
-    // Обработка фильтра
-    filterSelect.addEventListener('change', renderAlerts);
-
-    // Обработка кнопки очистки таблицы
-    const clearButton = document.getElementById('clear-table');
-    clearButton.addEventListener('click', () => {
-        allAlerts = [];
-        normalCounter = 0; // Сбрасываем счётчик
+    filterSelect.addEventListener('change', () => {
+        currentPage = 1;
         renderAlerts();
     });
 
-    // Подключение к SSE для получения логов в реальном времени
-    const source = new EventSource('/stream');
-    source.onmessage = (event) => {
-        const alert = JSON.parse(event.data);
-        allAlerts.unshift(alert); // Добавляем новый лог в начало массива
+    const clearButton = document.getElementById('clear-table');
+    clearButton.addEventListener('click', () => {
+        allAlerts = [];
+        displayedAlerts = [];
+        currentPage = 1;
         renderAlerts();
+    });
+
+    loadMoreButton.addEventListener('click', () => {
+        currentPage++;
+        renderAlerts();
+    });
+
+    toggleStreamButton.addEventListener('click', () => {
+        isStreaming = !isStreaming;
+        if (isStreaming) {
+            eventSource = new EventSource('/stream');
+            setupEventSource();
+            toggleStreamButton.innerHTML = '<i class="fas fa-pause me-1"></i> Pause Updates';
+            toggleStreamButton.classList.remove('btn-success');
+            toggleStreamButton.classList.add('btn-outline-secondary');
+        } else {
+            eventSource.close();
+            toggleStreamButton.innerHTML = '<i class="fas fa-play me-1"></i> Resume Updates';
+            toggleStreamButton.classList.remove('btn-outline-secondary');
+            toggleStreamButton.classList.add('btn-success');
+        }
+    });
+
+    const setupEventSource = () => {
+        eventSource.onmessage = (event) => {
+            const alert = JSON.parse(event.data);
+            console.log('Received alert via SSE:', alert);
+
+            allAlerts.push(alert);
+
+            if (alert.attack_status.toLowerCase().includes('attack')) {
+                alert(`ATTACK DETECTED! Source IP: ${alert.src_ip}, Destination IP: ${alert.dst_ip}`);
+            }
+
+            if (allAlerts.length > 100) {
+                allAlerts.shift();
+            }
+
+            renderAlerts();
+        };
+
+        eventSource.onerror = () => {
+            console.error('SSE connection error');
+            if (isStreaming) {
+                setTimeout(() => {
+                    eventSource = new EventSource('/stream');
+                    setupEventSource();
+                }, 5000);
+            }
+        };
     };
 
-    source.onerror = (error) => {
-        console.error('SSE error:', error);
+    setupEventSource();
+
+    const fetchInitialAlerts = async () => {
+        try {
+            const response = await fetch('/alerts');
+            const initialAlerts = await response.json();
+            console.log('Fetched initial alerts:', initialAlerts);
+            if (initialAlerts.length > 0) {
+                allAlerts = initialAlerts;
+                renderAlerts();
+            }
+        } catch (error) {
+            console.error('Error fetching initial alerts:', error);
+        }
     };
+
+    fetchInitialAlerts();
 });

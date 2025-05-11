@@ -1,12 +1,7 @@
-version: '3.8'
-
 services:
   zookeeper:
     container_name: ids-zookeeper
     image: confluentinc/cp-zookeeper:7.2.1
-    build:
-      context: .
-      dockerfile: Dockerfile-zookeeper
     environment:
       - ZOOKEEPER_CLIENT_PORT=2181
       - ZOOKEEPER_TICK_TIME=2000
@@ -27,30 +22,29 @@ services:
 
   kafka:
     container_name: ids-kafka
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: confluentinc/cp-kafka:7.2.1
     depends_on:
       zookeeper:
         condition: service_healthy
     ports:
       - "9092:9092"
       - "9093:9093"
+      - "29092:29092"
     environment:
       - KAFKA_BROKER_ID=1
       - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
-      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092,INTERNAL://0.0.0.0:9093
-      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092,INTERNAL://kafka:9093
-      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT
+      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092,INTERNAL://0.0.0.0:9093,EXTERNAL://0.0.0.0:29092
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092,INTERNAL://kafka:9093,EXTERNAL://localhost:29092
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
       - KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL
       - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
       - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
       - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
-      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
     volumes:
       - kafka-data:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:9092"]
+      test: ["CMD", "/usr/bin/kafka-topics", "--list", "--bootstrap-server", "localhost:9092"]
       interval: 10s
       timeout: 10s
       retries: 30
@@ -112,7 +106,7 @@ services:
       - NET_RAW
     environment:
       - NETWORK_INTERFACE=eth0
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_BOOTSTRAP_SERVERS=localhost:29092
     network_mode: host
     restart: "unless-stopped"
 
@@ -129,8 +123,23 @@ services:
         condition: service_healthy
     environment:
       - NETWORK_INTERFACE=eth0
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_BOOTSTRAP_SERVERS=localhost:29092
     network_mode: host
+    restart: "unless-stopped"
+    
+  file_processor:
+    build:
+      context: ./file_processor
+      dockerfile: Dockerfile
+    image: nidss-file-processor
+    volumes:
+      - ./shared-uploads:/app/uploads
+      - ./models:/app/models
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - ids-network
     restart: "unless-stopped"
 
   webapp:
@@ -143,9 +152,30 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9093
+    volumes:
+      - ./webapp/static:/app/static
+      - ./shared-uploads:/app/uploads
     networks:
       - ids-network
     restart: "unless-stopped"
+  kafka_to_web:
+    build:
+      context: ./webapp
+      dockerfile: Dockerfile.kafka_to_web
+    environment:
+      - FLASK_ENV=development
+    volumes:
+      - ./webapp:/app
+    ports:
+      - "5001:5001"
+    depends_on:
+      - webapp
+      - kafka
+    networks:
+      - ids-network
+    restart: unless-stopped
 
 volumes:
   zookeeper-data:
@@ -154,3 +184,4 @@ volumes:
 networks:
   ids-network:
     driver: bridge
+
